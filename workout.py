@@ -6,20 +6,20 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 from datetime import datetime, timedelta
 from PIL import Image, ImageTk
-import mplcursors  # For hover tooltips
+import mplcursors
+import shutil
 
 class WorkoutTrackerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Workout Tracker")
-        self.root.geometry("600x700")
-
+        self.root.geometry("1000x1000")
         # Theme settings
         self.themes = {
             "dark": {"bg": "#2C3E50", "fg": "#ECF0F1", "button_bg": "#34495E", "active_bg": "#3498DB", "entry_bg": "#ECF0F1"},
             "light": {"bg": "#ECF0F1", "fg": "#2C3E50", "button_bg": "#D5D8DC", "active_bg": "#3498DB", "entry_bg": "#FFFFFF"}
         }
-        self.current_theme = "dark"
+        self.current_theme = self.load_theme()
         self.current_view = "log"
 
         # Load theme icons with fallback
@@ -42,7 +42,7 @@ class WorkoutTrackerApp:
         # Style configuration
         self.style = ttk.Style()
 
-        # Initialize UI components before applying theme
+        # Initialize UI components
         self.content_frame = tk.Frame(root, bg=self.themes[self.current_theme]["bg"])
         self.content_frame.pack(fill="both", expand=True)
 
@@ -56,6 +56,8 @@ class WorkoutTrackerApp:
         self.history_button.pack(side="left", padx=5)
         self.graphs_button = tk.Button(button_frame, text="Graphs", command=self.show_graphs, **btn_style)
         self.graphs_button.pack(side="left", padx=5)
+        self.stats_button = tk.Button(button_frame, text="Stats", command=self.show_stats, **btn_style)
+        self.stats_button.pack(side="left", padx=5)
         self.profile_button = tk.Button(button_frame, image=self.profile_icon if self.profile_icon else None, text="Profile" if not self.profile_icon else "", compound="left", bg=self.themes[self.current_theme]["button_bg"], fg=self.themes[self.current_theme]["fg"], bd=0, command=self.show_profile)
         self.profile_button.pack(side="left", padx=5)
 
@@ -65,6 +67,22 @@ class WorkoutTrackerApp:
 
         # Apply theme after UI setup
         self.apply_theme()
+
+    def load_theme(self):
+        try:
+            with open("settings.csv", "r") as file:
+                reader = csv.reader(file)
+                next(reader)  # Skip header
+                theme = next(reader)[0]
+                return theme if theme in self.themes else "dark"
+        except (FileNotFoundError, IndexError):
+            return "dark"
+
+    def save_theme(self):
+        with open("settings.csv", "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["theme"])
+            writer.writerow([self.current_theme])
 
     def apply_theme(self):
         theme = self.themes[self.current_theme]
@@ -78,8 +96,6 @@ class WorkoutTrackerApp:
                         widget.configure(image=self.light_icon if self.light_icon else None, text="Light" if not self.light_icon else "", bg=theme["button_bg"], fg=theme["fg"], activebackground=theme["active_bg"])
                     else:
                         widget.configure(image=self.dark_icon if self.dark_icon else None, text="Dark" if not self.dark_icon else "", bg=theme["button_bg"], fg=theme["fg"], activebackground=theme["active_bg"])
-                elif widget == self.profile_button:
-                    widget.configure(image=self.profile_icon if self.profile_icon else None, text="Profile" if not self.profile_icon else "", bg=theme["button_bg"], fg=theme["fg"], activebackground=theme["active_bg"])
                 else:
                     widget.configure(bg=theme["button_bg"], fg=theme["fg"], activebackground=theme["active_bg"])
         self.update_style()
@@ -98,6 +114,7 @@ class WorkoutTrackerApp:
 
     def switch_theme(self):
         self.current_theme = "light" if self.current_theme == "dark" else "dark"
+        self.save_theme()
         self.apply_theme()
 
     def clear_content(self):
@@ -112,6 +129,8 @@ class WorkoutTrackerApp:
             self.show_history()
         elif self.current_view == "graphs":
             self.show_graphs()
+        elif self.current_view == "stats":
+            self.show_stats()
         elif self.current_view == "profile":
             self.show_profile()
 
@@ -121,6 +140,7 @@ class WorkoutTrackerApp:
         self.log_button.config(bg=self.themes[self.current_theme]["active_bg"])
         self.history_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.graphs_button.config(bg=self.themes[self.current_theme]["button_bg"])
+        self.stats_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.profile_button.config(bg=self.themes[self.current_theme]["button_bg"])
 
         theme = self.themes[self.current_theme]
@@ -140,6 +160,7 @@ class WorkoutTrackerApp:
         self.log_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.history_button.config(bg=self.themes[self.current_theme]["active_bg"])
         self.graphs_button.config(bg=self.themes[self.current_theme]["button_bg"])
+        self.stats_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.profile_button.config(bg=self.themes[self.current_theme]["button_bg"])
 
         theme = self.themes[self.current_theme]
@@ -152,16 +173,18 @@ class WorkoutTrackerApp:
         self.filter_dropdown.pack(side="left", padx=10, pady=5)
         self.filter_dropdown.bind("<<ComboboxSelected>>", lambda event: self.update_history())
 
-        self.tree = ttk.Treeview(self.content_frame, columns=("Date", "Exercise", "Distance", "Pace"), show="headings", height=15, selectmode="extended")
+        self.tree = ttk.Treeview(self.content_frame, columns=("Date", "Exercise", "Distance", "Pace", "Notes"), show="headings", height=15, selectmode="extended")
         self.tree.pack(pady=10, padx=10, fill="both", expand=True)
         self.tree.heading("Date", text="Date")
         self.tree.heading("Exercise", text="Exercise")
-        self.tree.heading("Distance", text="Distance (km)")
-        self.tree.heading("Pace", text="Pace (min/km or min/100m)")
+        self.tree.heading("Distance", text="Distance")
+        self.tree.heading("Pace", text="Pace")
+        self.tree.heading("Notes", text="Notes")
         self.tree.column("Date", width=150)
         self.tree.column("Exercise", width=100)
-        self.tree.column("Distance", width=100)
+        self.tree.column("Distance", width=120)
         self.tree.column("Pace", width=150)
+        self.tree.column("Notes", width=200)
         scrollbar = ttk.Scrollbar(self.content_frame, orient="vertical", command=self.tree.yview)
         scrollbar.pack(side="right", fill="y")
         self.tree.configure(yscrollcommand=scrollbar.set)
@@ -185,6 +208,8 @@ class WorkoutTrackerApp:
         menu = tk.Menu(self.root, tearoff=0)
         menu.add_command(label="Export CSV", command=self.export_csv)
         menu.add_command(label="Import CSV", command=self.import_csv)
+        menu.add_command(label="Backup Data", command=self.backup_data)
+        menu.add_command(label="Restore Data", command=self.restore_data)
         menu.tk_popup(self.root.winfo_pointerx(), self.root.winfo_pointery())
 
     def show_graphs(self):
@@ -193,6 +218,7 @@ class WorkoutTrackerApp:
         self.log_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.history_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.graphs_button.config(bg=self.themes[self.current_theme]["active_bg"])
+        self.stats_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.profile_button.config(bg=self.themes[self.current_theme]["button_bg"])
 
         theme = self.themes[self.current_theme]
@@ -200,22 +226,99 @@ class WorkoutTrackerApp:
         options_frame.pack(pady=10)
 
         tk.Label(options_frame, text="Activity:", font=("Arial", 12, "bold"), fg=theme["fg"], bg=theme["bg"]).pack(side="left", padx=5)
-        self.activity_var = tk.StringVar(value="Run")
-        activity_options = ["Run", "Swim", "Walk"]
+        self.activity_var = tk.StringVar(value="All")
+        activity_options = ["All", "Run", "Swim", "Walk"]
         self.activity_dropdown = ttk.Combobox(options_frame, textvariable=self.activity_var, values=activity_options, state="readonly", width=10)
         self.activity_dropdown.pack(side="left", padx=5)
         self.activity_dropdown.bind("<<ComboboxSelected>>", lambda event: self.update_graph())
 
         tk.Label(options_frame, text="Metric:", font=("Arial", 12, "bold"), fg=theme["fg"], bg=theme["bg"]).pack(side="left", padx=5)
         self.metric_var = tk.StringVar(value="Distance")
-        self.metric_dropdown = ttk.Combobox(options_frame, textvariable=self.metric_var, state="readonly", width=10)
-        self.update_metric_options(None)
+        self.metric_dropdown = ttk.Combobox(options_frame, textvariable=self.metric_var, values=["Distance", "Pace"], state="readonly", width=10)
         self.metric_dropdown.pack(side="left", padx=5)
         self.metric_dropdown.bind("<<ComboboxSelected>>", lambda event: self.update_graph())
 
+        tk.Label(options_frame, text="From (DD.MM.YYYY):", font=("Arial", 12, "bold"), fg=theme["fg"], bg=theme["bg"]).pack(side="left", padx=5)
+        self.from_date_entry = tk.Entry(options_frame, font=("Arial", 12), width=12, bg=theme["entry_bg"])
+        self.from_date_entry.insert(0, (datetime.now() - timedelta(days=365)).strftime("%d.%m.%Y"))
+        self.from_date_entry.pack(side="left", padx=5)
+
+        tk.Label(options_frame, text="To (DD.MM.YYYY):", font=("Arial", 12, "bold"), fg=theme["fg"], bg=theme["bg"]).pack(side="left", padx=5)
+        self.to_date_entry = tk.Entry(options_frame, font=("Arial", 12), width=12, bg=theme["entry_bg"])
+        self.to_date_entry.insert(0, datetime.now().strftime("%d.%m.%Y"))
+        self.to_date_entry.pack(side="left", padx=5)
+
         self.graph_frame = tk.Frame(self.content_frame, bg=theme["bg"])
         self.graph_frame.pack(fill="both", expand=True)
+
+        button_frame = tk.Frame(self.content_frame, bg=theme["bg"])
+        button_frame.pack(pady=5)
+        tk.Button(button_frame, text="Save Graph", command=self.save_graph, font=("Arial", 12), bg="#2ECC71", fg="white", width=15, bd=0, activebackground="#27AE60").pack(pady=5)
+
         self.update_graph()
+
+    def show_stats(self):
+        self.clear_content()
+        self.current_view = "stats"
+        self.log_button.config(bg=self.themes[self.current_theme]["button_bg"])
+        self.history_button.config(bg=self.themes[self.current_theme]["button_bg"])
+        self.graphs_button.config(bg=self.themes[self.current_theme]["button_bg"])
+        self.stats_button.config(bg=self.themes[self.current_theme]["active_bg"])
+        self.profile_button.config(bg=self.themes[self.current_theme]["button_bg"])
+
+        theme = self.themes[self.current_theme]
+        stats_frame = tk.Frame(self.content_frame, bg=theme["bg"])
+        stats_frame.pack(pady=20)
+
+        tk.Label(stats_frame, text="Activity Stats", font=("Arial", 20, "bold"), fg=theme["fg"], bg=theme["bg"]).pack(pady=10)
+
+        stats_text = tk.Text(stats_frame, height=30, width=50, font=("Arial", 12), fg=theme["fg"], bg=theme["bg"], wrap="word")
+        stats_text.pack(pady=5)
+
+        try:
+            with open("workouts.csv", "r") as file:
+                reader = csv.reader(file)
+                header = next(reader)
+                workouts = [row for row in reader if len(row) == 8]
+
+            if not workouts:
+                stats_text.insert(tk.END, "No workout data available")
+                stats_text.config(state="disabled")
+                return
+
+            stats = {"Run": {"distance": 0.0, "pace": [], "max_distance": 0.0},
+                     "Swim": {"distance": 0.0, "pace": [], "max_distance": 0.0},
+                     "Walk": {"distance": 0.0, "pace": [], "max_distance": 0.0}}
+
+            for row in workouts:
+                exercise = row[1].strip('"')
+                distance = row[5].strip('"')
+                pace = row[6].strip('"')
+                if exercise in stats and distance and pace:
+                    dist_value = float(distance) / 1000 if exercise.lower() == "swim" else float(distance)
+                    pace_value = self.parse_pace(pace)  # Handle both MM:SS and float
+                    stats[exercise]["distance"] += dist_value
+                    stats[exercise]["pace"].append(pace_value)
+                    stats[exercise]["max_distance"] = max(stats[exercise]["max_distance"], dist_value)
+
+            for activity in stats:
+                total_dist = stats[activity]["distance"]
+                pace_list = stats[activity]["pace"]
+                avg_pace = sum(pace_list) / len(pace_list) if pace_list else 0.0
+                max_dist = stats[activity]["max_distance"]
+                unit_dist = "km" if activity in ["Run", "Walk"] else "m"
+                unit_pace = "min/km" if activity in ["Run", "Walk"] else "min/100m"
+                avg_pace_str = self.format_pace(avg_pace, unit_pace)
+                stats_text.insert(tk.END, f"{activity}:\n")
+                stats_text.insert(tk.END, f"Total Distance: {total_dist:.2f} {unit_dist}\n")
+                stats_text.insert(tk.END, f"Average Pace: {avg_pace_str}\n")
+                stats_text.insert(tk.END, f"Longest {activity}: {max_dist:.2f} {unit_dist}\n\n")
+
+            stats_text.config(state="disabled")  # Make read-only but selectable
+
+        except FileNotFoundError:
+            stats_text.insert(tk.END, "No data available")
+            stats_text.config(state="disabled")
 
     def show_profile(self):
         self.clear_content()
@@ -223,6 +326,7 @@ class WorkoutTrackerApp:
         self.log_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.history_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.graphs_button.config(bg=self.themes[self.current_theme]["button_bg"])
+        self.stats_button.config(bg=self.themes[self.current_theme]["button_bg"])
         self.profile_button.config(bg=self.themes[self.current_theme]["active_bg"])
 
         theme = self.themes[self.current_theme]
@@ -259,15 +363,22 @@ class WorkoutTrackerApp:
             writer.writerow(profile_data)
         messagebox.showinfo("Success", "Profile saved!")
 
-    def update_metric_options(self, event):
-        activity = self.activity_var.get()
-        metric_options = {
-            "Run": ["Distance", "Pace"],
-            "Swim": ["Distance", "Pace"],
-            "Walk": ["Distance", "Pace"]
-        }[activity]
-        self.metric_dropdown["values"] = metric_options
-        self.metric_var.set(metric_options[0])
+    def parse_pace(self, pace_str):
+        """Convert MM:SS pace to float minutes, handle legacy float values."""
+        try:
+            if ":" in pace_str:
+                minutes, seconds = map(int, pace_str.split(":"))
+                return minutes + seconds / 60.0
+            else:
+                return float(pace_str)  # Handle old float values
+        except ValueError:
+            raise ValueError("Pace must be in MM:SS format (e.g., 4:50) or a number")
+
+    def format_pace(self, pace_float, unit):
+        """Convert float minutes back to MM:SS for display."""
+        minutes = int(pace_float)
+        seconds = int((pace_float - minutes) * 60)
+        return f"{minutes}:{seconds:02d} {unit}"
 
     def update_graph(self):
         for widget in self.graph_frame.winfo_children():
@@ -281,121 +392,136 @@ class WorkoutTrackerApp:
         ax.spines['top'].set_color(theme["fg"])
         ax.spines['left'].set_color(theme["fg"])
         ax.spines['right'].set_color(theme["fg"])
+        ax.grid(True, linestyle='--', alpha=0.7, color=theme["fg"])
 
         try:
             with open("workouts.csv", "r") as file:
                 reader = csv.reader(file)
                 header = next(reader)
                 print("CSV Header:", header)
-                workouts = list(reader)
+                workouts = [row for row in reader if len(row) == 8]
                 print(f"Loaded {len(workouts)} workouts")
 
-            activity = self.activity_var.get()
+            activity_filter = self.activity_var.get()
             metric = self.metric_var.get()
             metric_index = {"Distance": 5, "Pace": 6}[metric]
             unit = {
                 "Distance": "km",
-                "Pace": "min/km" if activity in ["Run", "Walk"] else "min/100m"
+                "Pace": "min/km" if activity_filter in ["Run", "Walk", "All"] else "min/100m"
             }[metric]
 
-            now = datetime.now()
-            start_date = now - timedelta(days=365)
-            print(f"Graph start date: {start_date.strftime('%d.%m.%Y %H:%M')}")
+            # Custom date range
+            try:
+                start_date = datetime.strptime(self.from_date_entry.get() + " 00:00", "%d.%m.%Y %H:%M")
+                end_date = datetime.strptime(self.to_date_entry.get() + " 23:59", "%d.%m.%Y %H:%M")
+                if start_date > end_date:
+                    raise ValueError("Start date must be before end date")
+            except ValueError as e:
+                messagebox.showerror("Error", str(e) if str(e) != "Start date must be before end date" else "Invalid date format (use DD.MM.YYYY)")
+                start_date = datetime.now() - timedelta(days=365)
+                end_date = datetime.now()
+                self.from_date_entry.delete(0, tk.END)
+                self.from_date_entry.insert(0, start_date.strftime("%d.%m.%Y"))
+                self.to_date_entry.delete(0, tk.END)
+                self.to_date_entry.insert(0, end_date.strftime("%d.%m.%Y"))
 
-            # Determine dynamic month range
-            all_dates = []
-            for row in workouts:
-                if len(row) != 7:
-                    print("Skipping invalid row:", row)
-                    continue
-                date = row[0].strip('"')
-                try:
-                    entry_date = datetime.strptime(date, "%d.%m.%Y %H:%M")
-                    all_dates.append(entry_date)
-                except ValueError:
-                    print(f"Invalid date format in row: {row}")
-                    continue
+            print(f"Graph range: {start_date.strftime('%d.%m.%Y %H:%M')} to {end_date.strftime('%d.%m.%Y %H:%M')}")
 
-            if not all_dates:
-                month_labels = [(start_date + timedelta(days=30*i)).strftime("%b %Y") for i in range(12)]
-            else:
-                min_date = min(start_date, min(all_dates))
-                max_date = max(now, max(all_dates))
-                months_count = ((max_date.year - min_date.year) * 12 + max_date.month - min_date.month) + 1
-                month_labels = []
-                current_date = min_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-                for _ in range(months_count):
-                    month_labels.append(current_date.strftime("%b %Y"))
-                    next_month = current_date.month + 1 if current_date.month < 12 else 1
-                    next_year = current_date.year + 1 if current_date.month == 12 else current_date.year
-                    current_date = current_date.replace(month=next_month, year=next_year)
+            # Dynamic month range
+            months_count = ((end_date.year - start_date.year) * 12 + end_date.month - start_date.month) + 1
+            month_labels = []
+            current_date = start_date.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+            for _ in range(months_count):
+                month_labels.append(current_date.strftime("%b %Y"))
+                next_month = current_date.month + 1 if current_date.month < 12 else 1
+                next_year = current_date.year + 1 if current_date.month == 12 else current_date.year
+                current_date = current_date.replace(month=next_month, year=next_year)
 
-            monthly_values = {month: 0.0 for month in month_labels}
-            monthly_counts = {month: 0 for month in month_labels}
+            # Stats per activity
+            activities = ["Run", "Swim", "Walk"] if activity_filter == "All" else [activity_filter]
+            colors = {"Run": "#3498DB", "Swim": "#2ECC71", "Walk": "#E74C3C"}
+            monthly_values = {act: {month: 0.0 for month in month_labels} for act in activities}
+            monthly_counts = {act: {month: 0 for month in month_labels} for act in activities}
 
             for row in workouts:
-                if len(row) != 7:
-                    continue
                 date = row[0].strip('"')
                 exercise = row[1].strip('"')
                 value = row[metric_index].strip('"')
                 print(f"Raw row: {row}")
                 print(f"Checking - Date: {date}, Exercise: {exercise}, {metric}: {value}")
-                if value and activity.lower() in exercise.lower():
+                if value and exercise in activities:
                     try:
                         entry_date = datetime.strptime(date, "%d.%m.%Y %H:%M")
-                        print(f"Parsed date: {entry_date.strftime('%d.%m.%Y %H:%M')}")
-                        if entry_date >= start_date:
+                        if start_date <= entry_date <= end_date:
                             month = entry_date.strftime("%b %Y")
-                            if month in monthly_values:
-                                # Convert swimming distance from meters to kilometers
-                                converted_value = float(value) / 1000 if exercise.lower() == "swim" and metric == "Distance" else float(value)
-                                monthly_values[month] += converted_value
-                                monthly_counts[month] += 1
-                                print(f"Added {converted_value} to {month} for {activity} {metric}")
+                            if month in month_labels:
+                                if metric == "Pace":
+                                    converted_value = self.parse_pace(value)
+                                else:
+                                    converted_value = float(value) / 1000 if exercise.lower() == "swim" else float(value)
+                                monthly_values[exercise][month] += converted_value
+                                monthly_counts[exercise][month] += 1
+                                print(f"Added {converted_value} to {month} for {exercise} {metric}")
                     except ValueError:
-                        print(f"Invalid date format in row: {row}")
+                        print(f"Invalid date or pace format in row: {row}")
                         continue
 
-            months = []
-            values = []
-            for month in month_labels:
-                if monthly_counts[month] > 0:
-                    if metric == "Pace":
-                        avg_value = monthly_values[month] / monthly_counts[month]
-                        values.append(avg_value)
-                        print(f"Averaged Pace for {month}: {avg_value}")
+            lines = []
+            for act in activities:
+                values = []
+                for month in month_labels:
+                    if monthly_counts[act][month] > 0:
+                        if metric == "Pace":
+                            avg_value = monthly_values[act][month] / monthly_counts[act][month]
+                            values.append(avg_value)
+                            print(f"Averaged Pace for {act} {month}: {avg_value}")
+                        else:
+                            values.append(monthly_values[act][month])
+                            print(f"Total Distance for {act} {month}: {monthly_values[act][month]}")
                     else:
-                        values.append(monthly_values[month])
-                        print(f"Total {metric} for {month}: {monthly_values[month]}")
-                else:
-                    values.append(0.0)
-                    print(f"No data for {month}")
-                months.append(month)
+                        values.append(0.0)
+                        print(f"No data for {act} {month}")
+                line, = ax.plot(range(len(month_labels)), values, color=colors[act], marker="o", label=act)
+                lines.append(line)
 
-            line, = ax.plot(range(len(months)), values, color="#3498DB", marker="o")
-            ax.set_title(f"{activity} {metric} Over Time", color=theme["fg"])
-            ax.set_xlabel("Month", color=theme["fg"])
+            ax.set_title(f"{metric} Over Time", color=theme["fg"])
             ax.set_ylabel(f"{metric} ({unit})", color=theme["fg"])
-            ax.set_xticks(range(len(months)))
-            ax.set_xticklabels(months, rotation=45, ha="right")
+            ax.set_xticks(range(len(month_labels)))
+            ax.set_xticklabels(month_labels, rotation=45, ha="right")
+            ax.legend()
 
-            # Add hover tooltip
-            cursor = mplcursors.cursor(line, hover=True)
+            cursor = mplcursors.cursor(lines, hover=True)
             @cursor.connect("add")
             def on_add(sel):
                 index = int(sel.target[0])
-                value = values[index]
-                month = months[index]
-                sel.annotation.set_text(f"{month}: {value:.2f} {unit}")
+                act = sel.artist.get_label()
+                value = sel.target[1]
+                month = month_labels[index]
+                if metric == "Pace":
+                    display_value = self.format_pace(value, unit.split()[0])
+                else:
+                    display_value = f"{value:.2f} {unit}"
+                sel.annotation.set_text(f"{act} {month}: {display_value}")
+                sel.annotation.get_bbox_patch().set_facecolor(theme["button_bg"])
+                sel.annotation.get_bbox_patch().set_alpha(0.9)
 
         except FileNotFoundError:
             ax.text(0.5, 0.5, "No data available", ha="center", va="center", color=theme["fg"])
             print("workouts.csv not found")
 
+        self.current_fig = fig
         canvas = FigureCanvasTkAgg(fig, master=self.graph_frame)
         canvas.draw()
         canvas.get_tk_widget().pack(fill="both", expand=True)
+
+    def save_graph(self):
+        if hasattr(self, 'current_fig'):
+            file_path = filedialog.asksaveasfilename(defaultextension=".png", filetypes=[("PNG files", "*.png")])
+            if file_path:
+                self.current_fig.savefig(file_path, dpi=100, bbox_inches="tight")
+                messagebox.showinfo("Success", "Graph saved successfully!")
+        else:
+            messagebox.showerror("Error", "No graph to save!")
 
     def clear_frame(self):
         for widget in self.input_frame.winfo_children():
@@ -416,9 +542,12 @@ class WorkoutTrackerApp:
         tk.Label(self.input_frame, text="Distance (km):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
         self.distance_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
         self.distance_entry.pack(pady=2)
-        tk.Label(self.input_frame, text="Pace (min/km):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
+        tk.Label(self.input_frame, text="Pace (MM:SS min/km):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
         self.pace_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
         self.pace_entry.pack(pady=2)
+        tk.Label(self.input_frame, text="Notes:", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
+        self.notes_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
+        self.notes_entry.pack(pady=2)
         tk.Button(self.input_frame, text="Log", command=self.log_activity, font=("Arial", 12), bg="#E74C3C", fg="white", width=10, bd=0, activebackground="#C0392B").pack(pady=10)
 
     def show_swim(self):
@@ -436,9 +565,12 @@ class WorkoutTrackerApp:
         tk.Label(self.input_frame, text="Distance (m):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
         self.distance_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
         self.distance_entry.pack(pady=2)
-        tk.Label(self.input_frame, text="Time (min):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
-        self.time_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
-        self.time_entry.pack(pady=2)
+        tk.Label(self.input_frame, text="Pace (MM:SS min/100m):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
+        self.pace_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
+        self.pace_entry.pack(pady=2)
+        tk.Label(self.input_frame, text="Notes:", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
+        self.notes_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
+        self.notes_entry.pack(pady=2)
         tk.Button(self.input_frame, text="Log", command=self.log_activity, font=("Arial", 12), bg="#E74C3C", fg="white", width=10, bd=0, activebackground="#C0392B").pack(pady=10)
 
     def show_walking(self):
@@ -456,14 +588,18 @@ class WorkoutTrackerApp:
         tk.Label(self.input_frame, text="Distance (km):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
         self.distance_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
         self.distance_entry.pack(pady=2)
-        tk.Label(self.input_frame, text="Pace (min/km):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
+        tk.Label(self.input_frame, text="Pace (MM:SS min/km):", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
         self.pace_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
         self.pace_entry.pack(pady=2)
+        tk.Label(self.input_frame, text="Notes:", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
+        self.notes_entry = tk.Entry(self.input_frame, font=("Arial", 12), width=20, bg=theme["entry_bg"])
+        self.notes_entry.pack(pady=2)
         tk.Button(self.input_frame, text="Log", command=self.log_activity, font=("Arial", 12), bg="#E74C3C", fg="white", width=10, bd=0, activebackground="#C0392B").pack(pady=10)
 
     def log_activity(self):
         exercise = self.exercise_entry.get() or self.activity_type
         date = self.date_entry.get()
+        notes = self.notes_entry.get()
         
         try:
             datetime.strptime(date, "%d.%m.%Y %H:%M")
@@ -472,29 +608,28 @@ class WorkoutTrackerApp:
                 pace = self.pace_entry.get()
                 if not distance or not pace:
                     raise ValueError("Distance and pace are required for Run/Walk")
-                distance = float(distance)  # Allow float values
-                pace = float(pace)
-                row = [date, exercise, "", "", "", distance, pace]
+                distance = float(distance)
+                pace_float = self.parse_pace(pace)  # Validate MM:SS
+                row = [date, exercise, "", "", "", distance, pace, notes]  # Store pace as MM:SS
             elif self.activity_type == "Swim":
                 distance = self.distance_entry.get()
-                time = self.time_entry.get()
-                if not distance or not time:
-                    raise ValueError("Distance and time are required for Swim")
-                distance = float(distance)  # Allow float values in meters
-                time = float(time)
-                pace = (time / distance) * 100  # Pace in min/100m
-                row = [date, exercise, "", "", "", distance, pace]
+                pace = self.pace_entry.get()
+                if not distance or not pace:
+                    raise ValueError("Distance and pace are required for Swim")
+                distance = float(distance)
+                pace_float = self.parse_pace(pace)  # Validate MM:SS
+                row = [date, exercise, "", "", "", distance, pace, notes]  # Store pace as MM:SS
 
             with open("workouts.csv", "a", newline="") as file:
                 writer = csv.writer(file)
                 writer.writerow(row)
             
-            messagebox.showinfo("Success", f"Activity logged! Pace: {pace:.2f} min/100m" if self.activity_type == "Swim" else f"Activity logged! Distance: {distance:.2f} km")
+            messagebox.showinfo("Success", f"Activity logged! Distance: {distance:.2f} {'m' if self.activity_type == 'Swim' else 'km'}")
             self.clear_frame()
             if self.current_view == "history":
                 self.update_history()
         except ValueError as e:
-            messagebox.showerror("Error", str(e) if str(e).startswith("Distance") else "Invalid input: Please enter a valid date (DD.MM.YYYY HH:MM) and numeric values")
+            messagebox.showerror("Error", str(e) if str(e).startswith("Distance") else "Invalid input: Use DD.MM.YYYY HH:MM for date, numeric distance, and MM:SS for pace")
 
     def update_history(self):
         if self.current_view == "history" and hasattr(self, 'tree'):
@@ -507,18 +642,19 @@ class WorkoutTrackerApp:
                     header = next(reader)
                     filter_type = self.filter_var.get()
                     for i, row in enumerate(reader):
-                        if len(row) < 7:
+                        if len(row) < 8:
                             continue
                         exercise = row[1].strip('"')
                         if filter_type == "All" or filter_type.lower() in exercise.lower():
                             tag = "evenrow" if i % 2 == 0 else "oddrow"
-                            distance = row[5].strip('"')
-                            pace = row[6].strip('"')
-                            display_row = [row[0].strip('"'), exercise, distance, pace]
+                            distance = float(row[5].strip('"'))
+                            pace = row[6].strip('"')  # Keep as MM:SS
+                            notes = row[7].strip('"')
+                            dist_unit = "m" if exercise.lower() == "swim" else "km"
+                            pace_unit = "min/100m" if exercise.lower() == "swim" else "min/km"
+                            display_row = [row[0].strip('"'), exercise, f"{distance:.2f} {dist_unit}", f"{pace} {pace_unit}", notes]
                             self.tree.insert("", "end", values=display_row, tags=(tag,))
-                            if distance:
-                                # Convert swimming distance from meters to kilometers
-                                total_distance_km += float(distance) / 1000 if exercise.lower() == "swim" else float(distance)
+                            total_distance_km += distance / 1000 if exercise.lower() == "swim" else distance
                     self.stats_label.config(text=f"Total Distance: {total_distance_km:.2f} km")
             except FileNotFoundError:
                 self.stats_label.config(text="No data available")
@@ -528,16 +664,37 @@ class WorkoutTrackerApp:
         if not selected_items:
             messagebox.showwarning("No Selection", "Please select at least one record to delete!")
             return
+        
+        selected_values = [self.tree.item(item, "values") for item in selected_items]
+        
         with open("workouts.csv", "r") as file:
             reader = csv.reader(file)
             header = next(reader)
             all_rows = list(reader)
-        selected_values = [list(self.tree.item(item, "values")) for item in selected_items]
-        updated_rows = [row for row in all_rows if [row[0].strip('"'), row[1].strip('"'), row[5].strip('"'), row[6].strip('"')] not in selected_values]
+        
+        updated_rows = []
+        for row in all_rows:
+            distance = float(row[5].strip('"'))
+            pace = row[6].strip('"')
+            exercise = row[1].strip('"')
+            dist_unit = "m" if exercise.lower() == "swim" else "km"
+            pace_unit = "min/100m" if exercise.lower() == "swim" else "min/km"
+            display_row = (
+                row[0].strip('"'),
+                exercise,
+                f"{distance:.2f} {dist_unit}",
+                f"{pace} {pace_unit}",
+                row[7].strip('"')
+            )
+            
+            if display_row not in selected_values:
+                updated_rows.append(row)
+        
         with open("workouts.csv", "w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(header)
             writer.writerows(updated_rows)
+        
         self.update_history()
         messagebox.showinfo("Success", f"{len(selected_items)} record(s) deleted!")
 
@@ -549,15 +706,17 @@ class WorkoutTrackerApp:
         if len(selected_item) > 1:
             messagebox.showwarning("Multiple Selection", "Please select only one record to edit!")
             return
-        selected_values = list(self.tree.item(selected_item[0], "values"))
+        selected_values = self.tree.item(selected_item[0], "values")
         self.edit_window = tk.Toplevel(self.root)
         self.edit_window.title("Edit Record")
-        self.edit_window.geometry("300x300")
+        self.edit_window.geometry("300x350")
         theme = self.themes[self.current_theme]
         self.edit_window.configure(bg=theme["bg"])
-        fields = ["Date", "Exercise", "Distance", "Pace"]
+        fields = ["Date", "Exercise", "Distance", "Pace", "Notes"]
+        # Strip units from distance and pace for editing
+        display_values = [selected_values[0], selected_values[1], selected_values[2].split()[0], selected_values[3].split()[0], selected_values[4]]
         self.edit_entries = {}
-        for i, (field, value) in enumerate(zip(fields, selected_values)):
+        for i, (field, value) in enumerate(zip(fields, display_values)):
             tk.Label(self.edit_window, text=f"{field}:", font=("Arial", 12), fg=theme["fg"], bg=theme["bg"]).pack(pady=2)
             entry = tk.Entry(self.edit_window, font=("Arial", 12), width=20, bg=theme["entry_bg"])
             entry.insert(0, value)
@@ -566,24 +725,48 @@ class WorkoutTrackerApp:
         tk.Button(self.edit_window, text="Save Changes", command=lambda: self.save_edit(selected_values), font=("Arial", 12), bg="#2ECC71", fg="white", width=15, bd=0, activebackground="#27AE60").pack(pady=10)
 
     def save_edit(self, old_values):
-        new_values = [self.edit_entries[field].get() for field in ["Date", "Exercise", "Distance", "Pace"]]
+        new_values = [self.edit_entries[field].get() for field in ["Date", "Exercise", "Distance", "Pace", "Notes"]]
+        
+        # Validate new values
+        try:
+            datetime.strptime(new_values[0], "%d.%m.%Y %H:%M")  # Date validation
+            float(new_values[2])  # Distance validation
+            self.parse_pace(new_values[3])  # Pace validation
+        except ValueError as e:
+            messagebox.showerror("Error", "Invalid input: Use DD.MM.YYYY HH:MM for date, numeric distance, and MM:SS for pace")
+            return
+
         with open("workouts.csv", "r") as file:
             reader = csv.reader(file)
             header = next(reader)
             all_rows = list(reader)
-        # Convert old_values to full row format for comparison
-        old_full_row = [old_values[0], old_values[1], "", "", "", old_values[2], old_values[3]]
+        
         updated_rows = []
         for row in all_rows:
-            stripped_row = [row[0].strip('"'), row[1].strip('"'), row[5].strip('"'), row[6].strip('"')]
-            if stripped_row == old_values:
-                updated_rows.append([new_values[0], new_values[1], "", "", "", new_values[2], new_values[3]])
+            distance = float(row[5].strip('"'))
+            pace = row[6].strip('"')
+            exercise = row[1].strip('"')
+            dist_unit = "m" if exercise.lower() == "swim" else "km"
+            pace_unit = "min/100m" if exercise.lower() == "swim" else "min/km"
+            display_row = (
+                row[0].strip('"'),
+                exercise,
+                f"{distance:.2f} {dist_unit}",
+                f"{pace} {pace_unit}",
+                row[7].strip('"')
+            )
+            
+            if display_row == old_values:
+                # Replace with new values, keeping the CSV structure
+                updated_rows.append([new_values[0], new_values[1], "", "", "", new_values[2], new_values[3], new_values[4]])
             else:
                 updated_rows.append(row)
+        
         with open("workouts.csv", "w", newline="") as file:
             writer = csv.writer(file)
             writer.writerow(header)
             writer.writerows(updated_rows)
+        
         self.edit_window.destroy()
         self.update_history()
         messagebox.showinfo("Success", "Record updated!")
@@ -602,22 +785,35 @@ class WorkoutTrackerApp:
                 reader = csv.reader(source)
                 header = next(reader)
                 for row in reader:
-                    if len(row) == 7:
+                    if len(row) == 8:
                         writer = csv.writer(target)
                         writer.writerow(row)
             self.update_history()
             messagebox.showinfo("Success", "Workouts imported successfully!")
 
+    def backup_data(self):
+        file_path = filedialog.asksaveasfilename(defaultextension=".csv", filetypes=[("CSV files", "*.csv")], initialfile="workouts_backup.csv")
+        if file_path:
+            shutil.copy("workouts.csv", file_path)
+            messagebox.showinfo("Success", "Data backed up successfully!")
+
+    def restore_data(self):
+        file_path = filedialog.askopenfilename(filetypes=[("CSV files", "*.csv")])
+        if file_path:
+            shutil.copy(file_path, "workouts.csv")
+            self.update_history()
+            messagebox.showinfo("Success", "Data restored successfully!")
+
 try:
     with open("workouts.csv", "r") as file:
         reader = csv.reader(file)
         header = next(reader)
-        if header != ["date", "exercise", "sets", "reps", "weight", "distance", "pace"]:
+        if header != ["date", "exercise", "sets", "reps", "weight", "distance", "pace", "notes"]:
             raise ValueError("CSV format outdated")
 except (FileNotFoundError, ValueError):
     with open("workouts.csv", "w", newline="") as file:
         writer = csv.writer(file)
-        writer.writerow(["date", "exercise", "sets", "reps", "weight", "distance", "pace"])
+        writer.writerow(["date", "exercise", "sets", "reps", "weight", "distance", "pace", "notes"])
 
 root = tk.Tk()
 app = WorkoutTrackerApp(root)
