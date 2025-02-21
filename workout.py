@@ -7,7 +7,7 @@ class WorkoutTrackerApp:
     def __init__(self, root):
         self.root = root
         self.root.title("Workout Tracker")
-        self.root.geometry("500x600")
+        self.root.geometry("500x650")
         self.root.configure(bg="#2C3E50")
 
         style = ttk.Style()
@@ -16,6 +16,12 @@ class WorkoutTrackerApp:
         style.configure("Treeview.Heading", background="#3498DB", foreground="white", font=("Arial", 12, "bold"))
         style.map("Treeview", background=[("selected", "#2980B9")])
         style.configure("Vertical.TScrollbar", background="#2C3E50", troughcolor="#34495E", arrowcolor="#ECF0F1")
+        
+        # Updated Combobox style with larger font
+        style.configure("TCombobox", fieldbackground="#34495E", background="#3498DB", foreground="#ECF0F1", arrowcolor="#ECF0F1", font=("Arial", 14, "bold"))
+        style.map("TCombobox", fieldbackground=[("readonly", "#34495E")], background=[("readonly", "#3498DB")], foreground=[("readonly", "#ECF0F1")])
+        # Style for the dropdown list (larger font for options)
+        self.root.option_add("*TCombobox*Listbox.font", ("Arial", 14, "bold"))
 
         tk.Label(root, text="Workout Tracker", font=("Arial", 20, "bold"), fg="#ECF0F1", bg="#2C3E50").pack(pady=20)
 
@@ -31,6 +37,7 @@ class WorkoutTrackerApp:
         self.history_button = tk.Button(button_frame, text="History", command=self.show_history, **btn_style)
         self.history_button.pack(side="left", padx=5)
 
+        self.current_view = "log"
         self.show_log()
 
     def clear_content(self):
@@ -39,6 +46,7 @@ class WorkoutTrackerApp:
 
     def show_log(self):
         self.clear_content()
+        self.current_view = "log"
         self.log_button.config(bg="#3498DB")
         self.history_button.config(bg="#34495E")
 
@@ -56,17 +64,18 @@ class WorkoutTrackerApp:
 
     def show_history(self):
         self.clear_content()
+        self.current_view = "history"
         self.log_button.config(bg="#34495E")
         self.history_button.config(bg="#3498DB")
 
-        # Filter frame
-        filter_frame = tk.Frame(self.content_frame, bg="#2C3E50")
-        filter_frame.pack(pady=5)
-        tk.Label(filter_frame, text="Filter by Activity:", font=("Arial", 12), fg="#ECF0F1", bg="#2C3E50").pack(side="left", padx=5)
+        filter_frame = tk.Frame(self.content_frame, bg="#34495E", bd=2, relief="groove")
+        filter_frame.pack(pady=10, padx=10, fill="x")
+
+        tk.Label(filter_frame, text="Filter by Activity:", font=("Arial", 10, "bold"), fg="#ECF0F1", bg="#34495E").pack(side="left", padx=10, pady=5)
         self.filter_var = tk.StringVar(value="All")
         filter_options = ["All", "Gym", "Run", "Swim", "Walk"]
-        self.filter_dropdown = ttk.Combobox(filter_frame, textvariable=self.filter_var, values=filter_options, state="readonly", font=("Arial", 12))
-        self.filter_dropdown.pack(side="left", padx=5)
+        self.filter_dropdown = ttk.Combobox(filter_frame, textvariable=self.filter_var, values=filter_options, state="readonly", width=15)
+        self.filter_dropdown.pack(side="left", padx=10, pady=5)
         self.filter_dropdown.bind("<<ComboboxSelected>>", lambda event: self.update_history())
 
         self.tree = ttk.Treeview(self.content_frame, columns=("Exercise", "Sets", "Reps", "Weight", "Distance", "Pace"), show="headings", height=18)
@@ -191,20 +200,20 @@ class WorkoutTrackerApp:
         
         messagebox.showinfo("Success", f"Activity logged! Pace: {pace if self.activity_type == 'Swim' else ''} min/100m" if self.activity_type == "Swim" else "Activity logged!")
         self.clear_frame()
-        self.update_history()
+        if self.current_view == "history":
+            self.update_history()
 
     def update_history(self):
-        if hasattr(self, 'tree'):
+        if self.current_view == "history" and hasattr(self, 'tree'):
             for item in self.tree.get_children():
                 self.tree.delete(item)
             try:
                 with open("workouts.csv", "r") as file:
                     reader = csv.reader(file)
-                    header = next(reader)  # Skip header
+                    header = next(reader)
                     filter_type = self.filter_var.get()
                     for i, row in enumerate(reader):
-                        exercise = row[0]  # First column is the exercise/activity name
-                        # Show all if "All" is selected, otherwise filter by activity type
+                        exercise = row[0]
                         if filter_type == "All" or filter_type in exercise:
                             tag = "evenrow" if i % 2 == 0 else "oddrow"
                             self.tree.insert("", "end", values=row, tags=(tag,))
